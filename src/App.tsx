@@ -1,7 +1,7 @@
 // Music Release Tracker - Clean, Beautiful React App
 import React, { useState, useEffect } from 'react';
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
-import { Music, Users, BarChart3, Bell, RefreshCcw, Menu, X, RefreshCw, Search, Wifi, WifiOff, Calendar, Clock, Heart } from 'lucide-react';
+import { Music, Users, BarChart3, Bell, RefreshCcw, Menu, X, RefreshCw, Search, Wifi, WifiOff, Calendar, Clock, Heart, Plus, UserPlus, Loader2 } from 'lucide-react';
 import api from './api/client';
 import './App.css';
 
@@ -292,7 +292,9 @@ function ReleasesView() {
 
 // Artists view component
 function ArtistsView() {
-  const { data: artistsData, isLoading, error } = useQuery({
+  const [showSearch, setShowSearch] = useState(false);
+
+  const { data: artistsData, isLoading, error, refetch } = useQuery({
     queryKey: ['artists'],
     queryFn: () => api.artists.getAll()
   });
@@ -302,6 +304,32 @@ function ArtistsView() {
 
   return (
     <div className="page-content">
+      {/* Search Section */}
+      <div className="artists-header">
+        <div className="artists-title">
+          <h2>Your Followed Artists</h2>
+          <p>Manage and discover new artists to follow</p>
+        </div>
+        <button 
+          className="add-artist-btn"
+          onClick={() => setShowSearch(!showSearch)}
+        >
+          <Plus size={20} />
+          Add Artist
+        </button>
+      </div>
+
+      {/* Search Interface */}
+      {showSearch && (
+        <ArtistSearchSection 
+          onArtistAdded={() => {
+            refetch();
+            setShowSearch(false);
+          }} 
+        />
+      )}
+
+      {/* Artists Grid */}
       {artistsData?.artists && artistsData.artists.length > 0 ? (
         <div className="artists-grid">
           {artistsData.artists.map((artist) => (
@@ -338,8 +366,143 @@ function ArtistsView() {
         <EmptyState 
           icon={Users}
           title="No artists found"
-          message="Add some artists to follow and discover their latest releases."
+          message="Click 'Add Artist' to search and follow new artists."
         />
+      )}
+    </div>
+  );
+}
+
+// Artist search section component
+function ArtistSearchSection({ onArtistAdded }: { onArtistAdded: () => void }) {
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [addingArtistId, setAddingArtistId] = useState<string | null>(null);
+
+  const handleSearch = async (query: string) => {
+    if (query.length < 2) {
+      setSearchResults([]);
+      return;
+    }
+
+    setIsSearching(true);
+    try {
+      const results = await api.artists.search(query, 8);
+      setSearchResults(results.artists || []);
+    } catch (error) {
+      console.error('Search failed:', error);
+      setSearchResults([]);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const handleAddArtist = async (artist: any) => {
+    setAddingArtistId(artist.mbid);
+    try {
+      await api.artists.add({
+        name: artist.name,
+        mbid: artist.mbid
+      });
+      
+      // Clear search and notify parent
+      setSearchQuery('');
+      setSearchResults([]);
+      onArtistAdded();
+    } catch (error: any) {
+      console.error('Failed to add artist:', error);
+      // Handle duplicate artist error gracefully
+      if (error.response?.status === 409) {
+        alert('This artist is already in your follow list!');
+      } else {
+        alert('Failed to add artist. Please try again.');
+      }
+    } finally {
+      setAddingArtistId(null);
+    }
+  };
+
+  // Debounced search effect
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      handleSearch(searchQuery);
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  return (
+    <div className="search-section">
+      <div className="search-header">
+        <h3>Search for Artists</h3>
+        <p>Search MusicBrainz to find new artists to follow</p>
+      </div>
+      
+      <div className="search-input-container">
+        <Search size={20} className="search-icon" />
+        <input
+          type="text"
+          placeholder="Search for artists (e.g., 'The Beatles', 'Drake', 'Taylor Swift')"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="search-input"
+        />
+        {isSearching && <Loader2 size={20} className="search-loading" />}
+      </div>
+
+      {searchResults.length > 0 && (
+        <div className="search-results">
+          <h4>Search Results ({searchResults.length})</h4>
+          <div className="search-results-grid">
+            {searchResults.map((artist) => (
+              <div key={artist.mbid} className="search-result-card">
+                <div className="search-result-info">
+                  <h5 className="search-result-name">{artist.name}</h5>
+                  <div className="search-result-meta">
+                    {artist.disambiguation && (
+                      <span className="disambiguation">{artist.disambiguation}</span>
+                    )}
+                    {artist.country && (
+                      <span className="country">{artist.country}</span>
+                    )}
+                    {artist.begin_date && (
+                      <span className="date">Since {new Date(artist.begin_date).getFullYear()}</span>
+                    )}
+                  </div>
+                </div>
+                
+                <button
+                  onClick={() => handleAddArtist(artist)}
+                  disabled={artist.is_followed || addingArtistId === artist.mbid}
+                  className={`follow-btn ${artist.is_followed ? 'followed' : ''}`}
+                >
+                  {addingArtistId === artist.mbid ? (
+                    <Loader2 size={16} className="spinning" />
+                  ) : artist.is_followed ? (
+                    <>
+                      <Users size={16} />
+                      Following
+                    </>
+                  ) : (
+                    <>
+                      <UserPlus size={16} />
+                      Follow
+                    </>
+                  )}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {searchQuery.length >= 2 && searchResults.length === 0 && !isSearching && (
+        <div className="no-results">
+          <Search size={24} />
+          <p>No artists found for "{searchQuery}"</p>
+          <p className="hint">Try different search terms or check spelling</p>
+        </div>
       )}
     </div>
   );
