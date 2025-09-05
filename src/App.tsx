@@ -254,30 +254,80 @@ function ReleasesView() {
   if (isLoading) return <LoadingSpinner message="Loading new releases..." />;
   if (error) return <ErrorMessage message="Failed to load releases" />;
 
+  // Group releases by type and sort by date
+  const groupReleasesByType = (releases: any[]) => {
+    const grouped: { [key: string]: any[] } = {};
+    releases.forEach(release => {
+      const type = release.release_type || 'Other';
+      if (!grouped[type]) {
+        grouped[type] = [];
+      }
+      grouped[type].push(release);
+    });
+    
+    // Sort each group by release date (newest first)
+    Object.keys(grouped).forEach(type => {
+      grouped[type].sort((a, b) => {
+        const dateA = new Date(a.release_date);
+        const dateB = new Date(b.release_date);
+        return dateB.getTime() - dateA.getTime(); // Newest first
+      });
+    });
+    
+    return grouped;
+  };
+
+  // Define preferred order for release types
+  const typeOrder = ['Album', 'EP', 'Single', 'Compilation', 'Soundtrack', 'Other'];
+
   return (
     <div className="page-content">
       {releases?.releases && releases.releases.length > 0 ? (
-        <div className="releases-grid">
-          {releases.releases.map((release) => (
-            <div key={release.id} className="release-card">
-              <div className="release-header">
-                <Music size={20} className="release-icon" />
-                <div className="release-meta">
-                  <span className="release-type">{release.release_type}</span>
-                  <span className="release-date">
-                    <Calendar size={14} />
-                    {new Date(release.release_date).toLocaleDateString()}
+        <div className="releases-by-type">
+          {(() => {
+            const groupedReleases = groupReleasesByType(releases.releases);
+            const sortedTypes = typeOrder.filter(type => groupedReleases[type]);
+            
+            // Add any types not in our predefined order
+            Object.keys(groupedReleases).forEach(type => {
+              if (!typeOrder.includes(type)) {
+                sortedTypes.push(type);
+              }
+            });
+
+            return sortedTypes.map(type => (
+              <div key={type} className="release-type-section">
+                <div className="release-type-header">
+                  <h3 className="release-type-title">{type}s</h3>
+                  <span className="release-type-count">
+                    {groupedReleases[type].length} release{groupedReleases[type].length !== 1 ? 's' : ''}
                   </span>
                 </div>
+                <div className="releases-grid">
+                  {groupedReleases[type].map((release) => (
+                    <div key={release.id} className="release-card">
+                      <div className="release-header">
+                        <Music size={20} className="release-icon" />
+                        <div className="release-meta">
+                          <span className="release-type">{release.release_type}</span>
+                          <span className="release-date">
+                            <Calendar size={14} />
+                            {new Date(release.release_date).toLocaleDateString()}
+                          </span>
+                        </div>
+                      </div>
+                      <h3 className="release-title">{release.title}</h3>
+                      <p className="release-artist">{release.artist_name}</p>
+                      <div className="release-info">
+                        <span className="track-count">{release.track_count} tracks</span>
+                        {release.is_new && <span className="new-badge">New</span>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
-              <h3 className="release-title">{release.title}</h3>
-              <p className="release-artist">{release.artist_name}</p>
-              <div className="release-info">
-                <span className="track-count">{release.track_count} tracks</span>
-                {release.is_new && <span className="new-badge">New</span>}
-              </div>
-            </div>
-          ))}
+            ));
+          })()}
         </div>
       ) : (
         <EmptyState 
